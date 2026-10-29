@@ -1,19 +1,363 @@
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Praktikum 1 - Scene Pertama</title>
+    <title>Praktikum 1 - Scene pertama</title>
+
     <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        .petunjuk {
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            z-index: 5;
+            padding: 10px 14px;
+            border: 1px solid #b68c00;
+            border-radius: 8px;
+            background: rgba(255, 245, 225, 0.94);
+            color: #5c3d00;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .petunjuk p {
+            margin: 3px 0;
+        }
+    </style>
+
+    <script>
+        AFRAME.registerComponent('interaksi-objek', {
+            init: function () {
+                const el = this.el;
+                let jumlahKlik = 0;
+                let timer = null;
+                let indeksWarna = 0;
+                let indeksBentuk = 0;
+
+                const warna = [
+                    '#FF7043', '#E75480', '#FFD54F',
+                    '#80CBC4', '#9575CD', '#64B5F6',
+                    '#D4A373', '#F5F5DC'
+                ];
+
+                const bentuk = [
+                    'box', 'sphere', 'cylinder', 'cone',
+                    'prism', 'pyramid', 'torus', 'octahedron'
+                ];
+
+                const geometri = {
+                    box: () => new THREE.BoxGeometry(1.15, 1.15, 1.15),
+
+                    sphere: () => new THREE.SphereGeometry(0.62, 48, 32),
+
+                    cylinder: () => new THREE.CylinderGeometry(0.48, 0.48, 1.15, 48),
+
+                    cone: () => new THREE.ConeGeometry(0.62, 1.15, 48),
+
+                    prism: () => {
+                        const shape = new THREE.Shape();
+                        shape.moveTo(-0.58, -0.48);
+                        shape.lineTo(0.58, -0.48);
+                        shape.lineTo(0, 0.58);
+                        shape.closePath();
+
+                        const geo = new THREE.ExtrudeGeometry(shape, {
+                            depth: 0.85,
+                            bevelEnabled: true,
+                            bevelSegments: 3,
+                            bevelSize: 0.025,
+                            bevelThickness: 0.025,
+                            steps: 1
+                        });
+
+                        geo.translate(0, 0, -0.425);
+                        geo.computeVertexNormals();
+                        return geo;
+                    },
+
+                    pyramid: () => {
+                        const vertices = [
+                            -0.58, -0.48, 0,
+                             0.58, -0.48, 0,
+                             0.58,  0.48, 0,
+                            -0.58,  0.48, 0,
+                             0,     0,    1.05
+                        ];
+
+                        const indices = [
+                            0, 1, 4, 1, 2, 4,
+                            2, 3, 4, 3, 0, 4,
+                            0, 2, 1, 0, 3, 2
+                        ];
+
+                        const geo = new THREE.BufferGeometry();
+                        geo.setAttribute(
+                            'position',
+                            new THREE.Float32BufferAttribute(vertices, 3)
+                        );
+                        geo.setIndex(indices);
+                        geo.computeVertexNormals();
+                        return geo;
+                    },
+
+                    torus: () => new THREE.TorusGeometry(0.43, 0.17, 24, 64),
+
+                    octahedron: () => new THREE.OctahedronGeometry(0.7, 1)
+                };
+
+                el.addEventListener('object-click', function () {
+                    jumlahKlik++;
+                    clearTimeout(timer);
+
+                    timer = setTimeout(function () {
+                        if (jumlahKlik === 1) {
+                            indeksWarna = (indeksWarna + 1) % warna.length;
+
+                            const mesh = el.getObject3D('mesh');
+
+                            if (mesh) {
+                                mesh.traverse(function (bagian) {
+                                    if (bagian.isMesh && bagian.material) {
+                                        const materials = Array.isArray(bagian.material)
+                                            ? bagian.material
+                                            : [bagian.material];
+
+                                        materials.forEach(function (mat) {
+                                            mat.color.set(warna[indeksWarna]);
+                                        });
+                                    }
+                                });
+                            }
+                        }
+
+                        jumlahKlik = 0;
+                    }, 280);
+
+                    if (jumlahKlik === 2) {
+                        clearTimeout(timer);
+                        indeksBentuk = (indeksBentuk + 1) % bentuk.length;
+
+                        const mesh = el.getObject3D('mesh');
+
+                        if (mesh) {
+                            const geoLama = mesh.geometry;
+                            mesh.geometry = geometri[bentuk[indeksBentuk]]();
+                            mesh.geometry.computeVertexNormals();
+
+                            if (geoLama) {
+                                geoLama.dispose();
+                            }
+                        }
+
+                        jumlahKlik = 0;
+                    }
+                });
+            }
+        });
+
+        AFRAME.registerComponent('kamera-orbit', {
+            init: function () {
+                const scene = this.el;
+                const target = new THREE.Vector3(0, 1.1, -4);
+
+                let sudut = 0;
+                let elevasi = 0.12;
+                let jarak = 6.2;
+                let sedangDrag = false;
+                let gerakMouse = 0;
+                let xSebelum = 0;
+                let ySebelum = 0;
+
+                function perbaruiKamera() {
+                    const cam = scene.camera;
+                    if (!cam) return;
+
+                    cam.position.set(
+                        target.x + jarak * Math.sin(sudut) * Math.cos(elevasi),
+                        target.y + jarak * Math.sin(elevasi),
+                        target.z + jarak * Math.cos(sudut) * Math.cos(elevasi)
+                    );
+
+                    cam.lookAt(target);
+                }
+
+                scene.addEventListener('loaded', perbaruiKamera);
+                scene.addEventListener('renderstart', perbaruiKamera);
+
+                scene.addEventListener('mousedown', function (e) {
+                    if (e.button !== 0) return;
+
+                    sedangDrag = true;
+                    gerakMouse = 0;
+                    xSebelum = e.clientX;
+                    ySebelum = e.clientY;
+                });
+
+                window.addEventListener('mousemove', function (e) {
+                    if (!sedangDrag) return;
+
+                    const dx = e.clientX - xSebelum;
+                    const dy = e.clientY - ySebelum;
+
+                    gerakMouse += Math.abs(dx) + Math.abs(dy);
+                    sudut -= dx * 0.008;
+
+                    elevasi = Math.max(
+                        -0.55,
+                        Math.min(0.8, elevasi + dy * 0.006)
+                    );
+
+                    xSebelum = e.clientX;
+                    ySebelum = e.clientY;
+
+                    perbaruiKamera();
+                });
+
+                window.addEventListener('mouseup', function (e) {
+                    if (!sedangDrag) return;
+                    sedangDrag = false;
+
+                    if (gerakMouse < 5) {
+                        const cam = scene.camera;
+                        const canvas = scene.canvas;
+
+                        if (!cam || !canvas) return;
+
+                        const rect = canvas.getBoundingClientRect();
+
+                        const mouse = new THREE.Vector2(
+                            ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                            -((e.clientY - rect.top) / rect.height) * 2 + 1
+                        );
+
+                        const raycaster = new THREE.Raycaster();
+                        raycaster.setFromCamera(mouse, cam);
+
+                        const objek = Array.from(
+                            scene.querySelectorAll('.clickable')
+                        );
+
+                        const meshObjek = objek
+                            .map(obj => obj.getObject3D('mesh'))
+                            .filter(Boolean);
+
+                        const hasil = raycaster.intersectObjects(meshObjek, false);
+
+                        if (hasil.length > 0) {
+                            const objekTerpilih = objek.find(
+                                obj => obj.getObject3D('mesh') === hasil[0].object
+                            );
+
+                            if (objekTerpilih) {
+                                objekTerpilih.emit('object-click');
+                            }
+                        }
+                    }
+                });
+
+                scene.addEventListener('wheel', function (e) {
+                    jarak = Math.max(
+                        3.5,
+                        Math.min(10, jarak + e.deltaY * 0.005)
+                    );
+
+                    perbaruiKamera();
+                }, { passive: true });
+
+                scene.addEventListener('loaded', perbaruiKamera);
+            }
+        });
+    </script>
 </head>
+
 <body>
-   <a-scene>
-        <a-box position="-0.54 0.6 -3.5" rotation="0 35 0" width="1.2" height="1.2" depth="1.2" color="#FF7043" animation="property: rotation; to: 0 395 0; loop: true; dur: 8000; easing: linear"></a-box>
-        <a-sphere position="0.15 0.5 -2.5" radius="0.5" color="#E75480" animation="property: position; to: 0.15 0.5 -1.5; dir: alternate; loop: true; dur: 2000; easing: easeInOutSine"></a-sphere>
-        <a-cylinder position="0.75 1.05 -4" radius="0.65" height="2.1" color="#FFD54F" ></a-cylinder>
-        <a-plane position="0 0 -4" rotation="-90 0 0" width="20" height="20" color="#A58A68"></a-plane>
+    <div class="petunjuk">
+        <strong>INTERAKSI OBJEK</strong>
+        <p>• Klik 1x: Ubah warna</p>
+        <p>• Klik 2x: Ubah bentuk</p>
+        <p>• Drag: Putar kamera 360°</p>
+        <p>• Scroll: Zoom</p>
+    </div>
+
+    <a-scene
+        renderer="antialias: true; colorManagement: true"
+        background="color: #F5F5DC"
+        kamera-orbit>
+
+        <a-entity light="type: ambient; intensity: 1.5"></a-entity>
+        <a-entity
+            light="type: directional; intensity: 1.7"
+            position="-3 5 4">
+        </a-entity>
+        <a-entity
+            light="type: directional; intensity: 0.7"
+            position="3 2 -1">
+        </a-entity>
+
+        <a-camera
+            position="0 2 2"
+            look-controls="enabled: false"
+            wasd-controls="enabled: false">
+        </a-camera>
+
+        <!-- Identitas -->
+        <a-text
+            value="Tajjana Maizlan - 2409020167"
+            position="0 2.5 -4"
+            align="center"
+            color="#332000"
+            width="7"
+            font="kelsonsans">
+        </a-text>
+
+        <!-- Kubus -->
+        <a-entity
+            class="clickable"
+            geometry="primitive: box; width: 1.15; height: 1.15; depth: 1.15"
+            material="color: #FF7043; roughness: 0.38; metalness: 0.08"
+            position="-1.8 0.95 -4"
+            rotation="0 0 0"
+            interaksi-objek>
+        </a-entity>
+
+        <!-- Bola -->
+        <a-entity
+            class="clickable"
+            geometry="primitive: sphere; radius: 0.62; segmentsWidth: 48; segmentsHeight: 32"
+            material="color: #E75480; roughness: 0.32; metalness: 0.05"
+            position="0 0.95 -4"
+            interaksi-objek
+            animation="property: position; from: 0 0.95 -4; to: 0 1.25 -4; dir: alternate; loop: true; dur: 1800; easing: easeInOutSine">
+        </a-entity>
+
+        <!-- Tabung -->
+        <a-entity
+            class="clickable"
+            geometry="primitive: cylinder; radius: 0.48; height: 1.15; segmentsRadial: 48"
+            material="color: #FFD54F; roughness: 0.35; metalness: 0.05"
+            position="1.8 0.95 -4"
+            interaksi-objek>
+        </a-entity>
+
+        <!-- Lantai -->
+        <a-plane
+            position="0 0 -4"
+            rotation="-90 0 0"
+            width="30"
+            height="30"
+            material="color: #A58A68; roughness: 0.9">
+        </a-plane>
+
         <a-sky color="#F5F5DC"></a-sky>
-        <a-text value="Tajjana Maizlan - 2409020167" font="kelsonsans" position="0 2.6 -3" align="center" color="#222222" width="6"></a-text>
-    </a-scene> 
+    </a-scene>
 </body>
 </html>
